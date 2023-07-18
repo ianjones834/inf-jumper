@@ -3,6 +3,8 @@ import Phaser from "../lib/phaser.js";
 import Carrot from "../game/Carrot.js";
 
 export default class Game extends Phaser.Scene {
+  carrotsCollected;
+
   /** @type {Phaser.Physics.Arcade.Sprite} */
   player;
 
@@ -15,8 +17,15 @@ export default class Game extends Phaser.Scene {
   /** @type {Phaser.Physics.Arcade.Group} */
   carrots;
 
+  /** @type {Phaser.GameObjects.Text} */
+  carrotsCollectedText;
+
   constructor() {
     super('game');
+  }
+
+  init() {
+    this.carrotsCollected = 0;
   }
 
   preload() {
@@ -24,9 +33,11 @@ export default class Game extends Phaser.Scene {
     this.load.image('platform', 'assets/ground_grass.png');
     this.load.image('bunny-stand', 'assets/bunny1_stand.png');
     this.load.image('carrot', 'assets/carrot.png');
+    this.load.image('bunny-jump', 'assets/bunny1_jump.png');
+
+    this.load.audio('jump', 'assets/sfx/phaseJump1.ogg');
 
     this.cursors = this.input.keyboard.createCursorKeys();
-
   }
 
   create() {
@@ -52,7 +63,7 @@ export default class Game extends Phaser.Scene {
       .sprite(240, 320, 'bunny-stand')
       .setScale(0.5);
 
-    this.physics.add.collider(this.platforms, this.player)
+    this.physics.add.collider(this.platforms, this.player);
 
     this.player.body.checkCollision.up = false;
     this.player.body.checkCollision.left = false;
@@ -63,7 +74,7 @@ export default class Game extends Phaser.Scene {
 
     this.carrots = this.physics.add.group({
       classType: Carrot
-    })
+    });
 
     this.physics.add.collider(this.platforms, this.carrots);
 
@@ -73,7 +84,16 @@ export default class Game extends Phaser.Scene {
       this.handleCollectCarrot,
       undefined,
       this
-    )
+    );
+
+    const style = {
+      color: '#000',
+      fontSize: 24,
+    };
+
+    this.carrotsCollectedText = this.add.text(240, 10, 'Carrots: 0', style)
+      .setScrollFactor(0)
+      .setOrigin(0.5,0);
   }
 
   update() {
@@ -93,6 +113,13 @@ export default class Game extends Phaser.Scene {
 
     if (touchingDown) {
       this.player.setVelocityY(-300);
+      this.player.setTexture('bunny-jump');
+      this.sound.play('jump');
+    }
+
+    const vy = this.player.body.velocity.y;
+    if (vy > 0 && this.player.texture.key !== 'bunny=stand') {
+      this.player.setTexture('bunny-stand');
     }
 
     if (this.cursors.left.isDown && !touchingDown) {
@@ -106,6 +133,11 @@ export default class Game extends Phaser.Scene {
     }
 
     this.horizontalWrap(this.player);
+
+    const bottomPlatform = this.findBottomMostPlatform();
+    if (this.player.y > bottomPlatform.y + 200) {
+      this.scene.start('game-over');
+    }
   }
 
   /**
@@ -133,10 +165,47 @@ export default class Game extends Phaser.Scene {
 
     /** @type {Phaser.Physics.Arcade.Sprite} */
     const carrot = this.carrots.get(sprite.x, y, 'carrot');
+
+    carrot.setActive(true);
+    carrot.setVisible(true);
+
     this.add.existing(carrot);
 
     carrot.body.setSize(carrot.width, carrot.height);
 
+    this.physics.world.enable(carrot);
+
     return carrot;
+  }
+
+  /**
+   * @param {Phaser.Physics.Arcade.Sprite} player
+   * @param {Carrot} carrot
+   *
+   */
+  handleCollectCarrot(player, carrot) {
+    this.carrots.killAndHide(carrot);
+    this.physics.world.disableBody(carrot.body);
+    this.carrotsCollected++;
+
+    const value = `Carrots: ${this.carrotsCollected}`
+    this.carrotsCollectedText.text = value;
+  }
+
+  findBottomMostPlatform() {
+    const platforms = this.platforms.getChildren();
+    let bottomPlatform = platforms[0];
+
+    for (let i = 1; i < platforms.length; i++) {
+      const platform = platforms[i];
+
+      if (platform.y < bottomPlatform.y) {
+        continue;
+      }
+
+      bottomPlatform = platform;
+    }
+
+    return bottomPlatform;
   }
 }
